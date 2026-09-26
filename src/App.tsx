@@ -33,29 +33,70 @@ import { LearningHub } from './components/LearningHub';
 import { ProgressTracker } from './components/ProgressTracker';
 import { DailyChallenges } from './components/DailyChallenges';
 import { AnimatedBackground } from './components/AnimatedBackground';
+import { INITIAL_INTERVIEW_SESSIONS } from './services/api';
+import {
+  DEMO_USER,
+  INITIAL_SKILL_GAPS,
+  INITIAL_ASSESSMENT,
+  INITIAL_DAILY_TASKS,
+  INITIAL_ROADMAP,
+  CODING_PROBLEMS,
+  QUIZ_SECTIONS,
+  JOB_RECOMMENDATIONS,
+  INITIAL_APPLICATIONS,
+} from './data/seedData';
 import { Menu, RotateCcw } from 'lucide-react';
 
 export default function App() {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [skillGaps, setSkillGaps] = useState<SkillGap[]>([]);
-  const [latestAssessment, setLatestAssessment] = useState<AssessmentResult | null>(null);
-  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
-  const [roadmap, setRoadmap] = useState<RoadmapPhase[]>([]);
-  const [codingProblems, setCodingProblems] = useState<CodingProblem[]>([]);
-  const [quizzes, setQuizzes] = useState<QuizSection[]>([]);
-  const [interviewSessions, setInterviewSessions] = useState<InterviewSession[]>([]);
-  const [jobs, setJobs] = useState<JobRecommendation[]>([]);
-  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [user, setUser] = useState<UserProfile>(() => {
+    try {
+      const cached = localStorage.getItem('placementpilot_user');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object' && parsed.name) {
+          return { ...DEMO_USER, ...parsed };
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return DEMO_USER;
+  });
+
+  const safeUser: UserProfile = user && user.name ? { ...DEMO_USER, ...user } : DEMO_USER;
+
+  useEffect(() => {
+    if (!user || !user.name) {
+      setUser(DEMO_USER);
+    }
+  }, [user]);
+  const [skillGaps, setSkillGaps] = useState<SkillGap[]>(INITIAL_SKILL_GAPS);
+  const [latestAssessment, setLatestAssessment] = useState<AssessmentResult | null>(INITIAL_ASSESSMENT);
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(INITIAL_DAILY_TASKS);
+  const [roadmap, setRoadmap] = useState<RoadmapPhase[]>(INITIAL_ROADMAP);
+  const [codingProblems, setCodingProblems] = useState<CodingProblem[]>(CODING_PROBLEMS);
+  const [quizzes, setQuizzes] = useState<QuizSection[]>(QUIZ_SECTIONS);
+  const [interviewSessions, setInterviewSessions] = useState<InterviewSession[]>(INITIAL_INTERVIEW_SESSIONS);
+  const [jobs, setJobs] = useState<JobRecommendation[]>(JOB_RECOMMENDATIONS);
+  const [applications, setApplications] = useState<ApplicationRecord[]>(INITIAL_APPLICATIONS);
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Fetch initial applet state
   const loadData = async () => {
     try {
+      const isLive = await api.checkHealth();
+      if (!isLive) {
+        // Backend unavailable (e.g. static Vercel deployment) - load immediately with 0 network stall
+        const u = await api.getUserProfile();
+        if (u && u.name) setUser(u);
+        return;
+      }
+
       const [u, assessData, tasksData, r, probs, qz, interviews, jbs, apps] =
         await Promise.all([
           api.getUserProfile(),
@@ -69,18 +110,18 @@ export default function App() {
           api.getApplications(),
         ]);
 
-      setUser(u);
-      setLatestAssessment(assessData.assessment);
-      setSkillGaps(assessData.skillGaps);
-      setDailyTasks(tasksData.tasks);
-      setRoadmap(r);
-      setCodingProblems(probs);
-      setQuizzes(qz);
-      setInterviewSessions(interviews);
-      setJobs(jbs);
-      setApplications(apps);
+      if (u && u.name) setUser(u);
+      if (assessData?.assessment) setLatestAssessment(assessData.assessment);
+      if (Array.isArray(assessData?.skillGaps) && assessData.skillGaps.length > 0) setSkillGaps(assessData.skillGaps);
+      if (Array.isArray(tasksData?.tasks) && tasksData.tasks.length > 0) setDailyTasks(tasksData.tasks);
+      if (Array.isArray(r) && r.length > 0) setRoadmap(r);
+      if (Array.isArray(probs) && probs.length > 0) setCodingProblems(probs);
+      if (Array.isArray(qz) && qz.length > 0) setQuizzes(qz);
+      if (Array.isArray(interviews) && interviews.length > 0) setInterviewSessions(interviews);
+      if (Array.isArray(jbs) && jbs.length > 0) setJobs(jbs);
+      if (Array.isArray(apps) && apps.length > 0) setApplications(apps);
     } catch (err) {
-      console.error('Error loading initial data:', err);
+      console.warn('Backend unavailable, running in resilient client mode:', err);
     } finally {
       setLoading(false);
     }
@@ -93,8 +134,8 @@ export default function App() {
   const handleToggleTask = async (taskId: string) => {
     try {
       const res = await api.toggleDailyTask(taskId);
-      setDailyTasks(res.tasks);
-      setUser(res.user);
+      if (res?.tasks) setDailyTasks(res.tasks);
+      if (res?.user?.name) setUser(res.user);
     } catch (err) {
       console.error(err);
     }
@@ -103,7 +144,7 @@ export default function App() {
   const handleAddTask = async (task: Partial<DailyTask>) => {
     try {
       const updated = await api.addDailyTask(task);
-      setDailyTasks(updated);
+      if (Array.isArray(updated)) setDailyTasks(updated);
     } catch (err) {
       console.error(err);
     }
@@ -112,8 +153,8 @@ export default function App() {
   const handleToggleMilestone = async (milestoneId: string) => {
     try {
       const res = await api.toggleMilestone(milestoneId);
-      setRoadmap(res.roadmap);
-      setUser(res.user);
+      if (res?.roadmap) setRoadmap(res.roadmap);
+      if (res?.user?.name) setUser(res.user);
     } catch (err) {
       console.error(err);
     }
@@ -122,7 +163,7 @@ export default function App() {
   const handleGenerateAiRoadmap = async () => {
     try {
       const updated = await api.generateAiRoadmap();
-      setRoadmap(updated);
+      if (Array.isArray(updated)) setRoadmap(updated);
     } catch (err) {
       console.error(err);
     }
@@ -135,10 +176,10 @@ export default function App() {
     roleSpecific: number;
   }) => {
     try {
-      const res = await api.submitAssessment(scores, user?.targetRole || 'Software/IT');
-      setLatestAssessment(res.assessment);
-      setSkillGaps(res.skillGaps);
-      setUser(res.user);
+      const res = await api.submitAssessment(scores, safeUser.targetRole || 'Software/IT');
+      if (res?.assessment) setLatestAssessment(res.assessment);
+      if (res?.skillGaps) setSkillGaps(res.skillGaps);
+      if (res?.user?.name) setUser(res.user);
     } catch (err) {
       console.error(err);
     }
@@ -146,25 +187,25 @@ export default function App() {
 
   const handleRunCode = async (problemId: string, code: string, language: string) => {
     const res = await api.runCode(problemId, code, language);
-    if (res.user) setUser(res.user);
+    if (res?.user?.name) setUser(res.user);
     return res;
   };
 
   const handleSubmitQuiz = async (quizId: string, score: number, totalQuestions: number) => {
     const res = await api.submitQuiz(quizId, score, totalQuestions);
-    if (res.user) setUser(res.user);
+    if (res?.user?.name) setUser(res.user);
     return res;
   };
 
   const handleStartInterview = async (track: 'HR' | 'Technical' | 'Behavioral' | 'Role-Specific', role?: string) => {
-    const session = await api.startInterview(track, role || user?.targetRole);
+    const session = await api.startInterview(track, role || safeUser.targetRole);
     setInterviewSessions((prev) => [session, ...prev]);
     return session;
   };
 
   const handleSendInterviewAnswer = async (sessionId: string, answerText: string) => {
     const res = await api.sendInterviewAnswer(sessionId, answerText);
-    if (res.user) setUser(res.user);
+    if (res?.user?.name) setUser(res.user);
     setInterviewSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? res.session : s))
     );
@@ -173,58 +214,67 @@ export default function App() {
 
   const handleAnalyzeResume = async (text: string, role: string, fileName?: string) => {
     const res = await api.analyzeResume(text, role, fileName);
-    // Reload user XP
-    const u = await api.getUserProfile();
-    setUser(u);
+    try {
+      const u = await api.getUserProfile();
+      if (u?.name) setUser(u);
+    } catch {}
     return res;
   };
 
   const handleAnalyzeProject = async (title: string, desc: string, stack: string[]) => {
     const res = await api.analyzeProject(title, desc, stack);
-    const u = await api.getUserProfile();
-    setUser(u);
+    try {
+      const u = await api.getUserProfile();
+      if (u?.name) setUser(u);
+    } catch {}
     return res;
   };
 
   const handleApplyJob = async (jobId: string) => {
     const res = await api.applyToJob(jobId);
-    setJobs(res.jobs);
-    setApplications((prev) => [res.application, ...prev]);
+    if (res?.jobs) setJobs(res.jobs);
+    if (res?.application) setApplications((prev) => [res.application, ...prev]);
     return res;
   };
 
   const handleSaveApplication = async (appData: Partial<ApplicationRecord>) => {
     const res = await api.saveApplication(appData);
-    setApplications(res);
+    if (Array.isArray(res)) setApplications(res);
     return res;
   };
 
   const handleDeleteApplication = async (id: string) => {
     const res = await api.deleteApplication(id);
-    setApplications(res);
+    if (Array.isArray(res)) setApplications(res);
     return res;
   };
 
   const handleSaveProfile = async (profileData: Partial<UserProfile>) => {
-    const updated = await api.updateUserProfile(profileData);
-    setUser(updated);
+    try {
+      const updated = await api.updateUserProfile(profileData);
+      if (updated && updated.name) {
+        setUser(updated);
+      }
+    } catch {
+      setUser((prev) => ({ ...prev, ...profileData }));
+    }
   };
 
   const handleResetDemo = async () => {
     if (confirm('Reset PlacementPilot AI to initial demo student Aarav Sharma?')) {
+      try {
+        localStorage.clear();
+      } catch {}
       await api.resetToDemo();
-      await loadData();
+      setUser(DEMO_USER);
+      setDailyTasks(INITIAL_DAILY_TASKS);
+      setLatestAssessment(INITIAL_ASSESSMENT);
+      setSkillGaps(INITIAL_SKILL_GAPS);
+      setRoadmap(INITIAL_ROADMAP);
+      setApplications(INITIAL_APPLICATIONS);
+      setInterviewSessions(INITIAL_INTERVIEW_SESSIONS);
     }
   };
-
-  if (loading || !user) {
-    return (
-      <div className="min-h-screen bg-[#060913] flex flex-col items-center justify-center space-y-4 text-white">
-        <RotateCcw className="w-8 h-8 animate-spin text-cyan-400" />
-        <div className="text-sm font-bold text-slate-300">Loading PlacementPilot AI...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-screen text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 overflow-x-hidden">
@@ -234,7 +284,7 @@ export default function App() {
       {/* Top Navigation */}
       <div className="relative z-20">
         <Navbar
-          user={user}
+          user={safeUser}
           onOpenOnboarding={() => setShowOnboarding(true)}
           onOpenAuth={() => setShowAuthModal(true)}
           onResetDemo={handleResetDemo}
@@ -265,14 +315,14 @@ export default function App() {
             </button>
 
             <span className="text-xs font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
-              {user.targetRole} · {user.overallReadiness}% Ready
+              {safeUser.targetRole} · {safeUser.overallReadiness}% Ready
             </span>
           </div>
 
           {/* Views */}
           {activeTab === 'dashboard' && (
             <Dashboard
-              user={user}
+              user={safeUser}
               skillGaps={skillGaps}
               dailyTasks={dailyTasks}
               latestAssessment={latestAssessment}
@@ -285,7 +335,7 @@ export default function App() {
 
           {activeTab === 'assessment' && (
             <Assessment
-              user={user}
+              user={safeUser}
               latestAssessment={latestAssessment}
               skillGaps={skillGaps}
               onSubmitAssessment={handleSubmitAssessment}
@@ -295,14 +345,14 @@ export default function App() {
 
           {activeTab === 'learning-hub' && (
             <LearningHub
-              user={user}
+              user={safeUser}
               setActiveTab={setActiveTab}
             />
           )}
 
           {activeTab === 'progress' && (
             <ProgressTracker
-              user={user}
+              user={safeUser}
               skillGaps={skillGaps}
               latestAssessment={latestAssessment}
               setActiveTab={setActiveTab}
@@ -311,15 +361,15 @@ export default function App() {
 
           {activeTab === 'challenges' && (
             <DailyChallenges
-              user={user}
-              onUpdateUser={(updated) => setUser((prev) => (prev ? { ...prev, ...updated } : null))}
+              user={safeUser}
+              onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
               setActiveTab={setActiveTab}
             />
           )}
 
           {activeTab === 'roadmap' && (
             <Roadmap
-              user={user}
+              user={safeUser}
               roadmap={roadmap}
               onToggleMilestone={handleToggleMilestone}
               onGenerateAiRoadmap={handleGenerateAiRoadmap}
@@ -329,7 +379,7 @@ export default function App() {
 
           {activeTab === 'planner' && (
             <DailyPlanner
-              user={user}
+              user={safeUser}
               dailyTasks={dailyTasks}
               onToggleTask={handleToggleTask}
               onAddTask={handleAddTask}
@@ -339,7 +389,7 @@ export default function App() {
 
           {activeTab === 'coding' && (
             <CodingPractice
-              user={user}
+              user={safeUser}
               problems={codingProblems}
               onRunCode={handleRunCode}
             />
@@ -347,17 +397,17 @@ export default function App() {
 
           {activeTab === 'quizzes' && (
             <Quizzes
-              user={user}
+              user={safeUser}
               quizzes={quizzes}
               onSubmitQuiz={handleSubmitQuiz}
             />
           )}
 
-          {activeTab === 'games' && <LearningGames user={user} />}
+          {activeTab === 'games' && <LearningGames user={safeUser} />}
 
           {activeTab === 'interview' && (
             <MockInterview
-              user={user}
+              user={safeUser}
               sessions={interviewSessions}
               onStartInterview={handleStartInterview}
               onSendAnswer={handleSendInterviewAnswer}
@@ -366,21 +416,21 @@ export default function App() {
 
           {activeTab === 'resume' && (
             <ResumeAnalyzer
-              user={user}
+              user={safeUser}
               onAnalyzeResume={handleAnalyzeResume}
             />
           )}
 
           {activeTab === 'project' && (
             <ProjectAnalyzer
-              user={user}
+              user={safeUser}
               onAnalyzeProject={handleAnalyzeProject}
             />
           )}
 
           {activeTab === 'jobs' && (
             <JobRecommendations
-              user={user}
+              user={safeUser}
               jobs={jobs}
               onApplyJob={handleApplyJob}
               setActiveTab={setActiveTab}
@@ -389,7 +439,7 @@ export default function App() {
 
           {activeTab === 'tracker' && (
             <ApplicationTracker
-              user={user}
+              user={safeUser}
               applications={applications}
               onSaveApplication={handleSaveApplication}
               onDeleteApplication={handleDeleteApplication}
@@ -400,7 +450,7 @@ export default function App() {
 
       {/* Floating AI Coach Widget */}
       <AICoach
-        user={user}
+        user={safeUser}
         skillGaps={skillGaps}
         onAskCoach={api.askCoach}
       />
@@ -409,13 +459,13 @@ export default function App() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        currentUser={user}
+        currentUser={safeUser}
         onLoginSuccess={async (updatedUser) => {
           try {
             const saved = await api.updateUserProfile(updatedUser);
             setUser(saved);
           } catch {
-            setUser((prev) => (prev ? { ...prev, ...updatedUser } : (updatedUser as UserProfile)));
+            setUser((prev) => ({ ...prev, ...updatedUser }));
           }
           setShowAuthModal(false);
         }}
@@ -423,7 +473,7 @@ export default function App() {
 
       {/* Onboarding / Profile Calibration Modal */}
       <OnboardingModal
-        user={user}
+        user={safeUser}
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
         onSaveProfile={handleSaveProfile}

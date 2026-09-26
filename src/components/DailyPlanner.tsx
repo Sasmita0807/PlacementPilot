@@ -43,6 +43,8 @@ export const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [newCategory, setNewCategory] = useState<'DSA' | 'Aptitude' | 'Mock' | 'Project' | 'Core CS'>('DSA');
   const [newMinutes, setNewMinutes] = useState(30);
 
+  const [timerNotification, setTimerNotification] = useState<string | null>(null);
+
   useEffect(() => {
     let interval: any = null;
     if (timerRunning && timerSeconds > 0) {
@@ -52,14 +54,15 @@ export const DailyPlanner: React.FC<DailyPlannerProps> = ({
     } else if (timerSeconds === 0) {
       setTimerRunning(false);
       if (timerMode === 'focus') {
-        alert('🎉 Great work! 25-minute study sprint complete. Take a 5-minute break!');
+        setTimerNotification('🎉 Great work! 25-minute study sprint complete. Take a 5-minute break!');
         setTimerMode('break');
         setTimerSeconds(5 * 60);
       } else {
-        alert('Break over! Ready for the next focus sprint?');
+        setTimerNotification('Break over! Ready for the next focus sprint?');
         setTimerMode('focus');
         setTimerSeconds(25 * 60);
       }
+      setTimeout(() => setTimerNotification(null), 5000);
     }
     return () => clearInterval(interval);
   }, [timerRunning, timerSeconds, timerMode]);
@@ -259,6 +262,13 @@ export const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 5m Quick Break
               </button>
             </div>
+
+            {/* Notification Banner */}
+            {timerNotification && (
+              <div className="p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-xs font-semibold animate-fadeIn">
+                {timerNotification}
+              </div>
+            )}
 
             {/* Current Active Task Banner */}
             <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-left">
