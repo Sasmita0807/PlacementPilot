@@ -1,0 +1,6 @@
+{
+  "name": "PlacementPilot AI",
+  "description": "Production-ready placement preparation platform with AI skill assessment, adaptive study roadmaps, mock interviews, coding practice, and resume analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
